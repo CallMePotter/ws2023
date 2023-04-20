@@ -1,0 +1,30 @@
+---
+- name: Collect server information
+  hosts: linux
+  gather_facts: yes
+  tasks:
+    - name: Get kernel version
+      shell: uname -r
+      register: kernel_version
+
+    - name: Get boot image
+      shell: cat /proc/cmdline | grep -oP 'BOOT_IMAGE=\K\S+'
+      register: boot_image
+
+    - name: Get Python version
+      shell: python3 --version
+      register: python_version
+
+    - name: Save report to file
+      copy:
+        content: |
+          Kernel version: {{ kernel_version.stdout }}
+          Boot image: {{ boot_image.stdout }}
+          Python version: {{ python_version.stdout }}
+        dest: "/tmp/{{ inventory_hostname }}.yml"
+
+    - name: Transfer report to server
+      fetch:
+        src: "/tmp/{{ inventory_hostname }}.yml"
+        dest: "/home/user/automation/{{inventory_hostname}}.yml"
+        flat: true

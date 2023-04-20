@@ -1,0 +1,145 @@
+---
+- name: Install and configure UFW and open necessary ports
+  hosts: all
+  become: true
+  vars_files:
+    - users.yml
+  vars:
+    ufw_rules:
+      - { port: "80", proto: "tcp" }
+      - { port: "8080", proto: "tcp" }
+      - { port: "1834", proto: "tcp" }
+      - { port: "1337", proto: "tcp" }
+      - { port: "123", proto: "udp" }
+      - { port: "5432", proto: "tcp" }
+  tasks:
+    - name: Install UFW
+      apt:
+        name: ufw
+        state: present
+
+    - name: Enable UFW
+      ufw:
+        policy: "deny"
+        state: enabled
+
+    - name: Allow SSH connections
+      ufw:
+        rule: allow
+        port: "ssh"
+        state: enabled
+
+    - name: Allow necessary ports
+      ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+        state: enabled
+      with_items: "{{ ufw_rules }}"
+
+    - name: Install NTP package
+      apt:
+        name: ntp
+        state: present
+
+    - name: Create admin group
+      group:
+        name: admin
+        state: present
+
+    - name: Create admin user
+      user:
+        name: "{{ user_name }}"
+        password: "{{ user_password }}"
+        group: admin
+
+    - name: Configure NTP server settings
+      copy:
+        dest: /etc/ntp.conf
+        content: "server ntp1.stratum2.ru"
+
+    - name: restart ntp service
+      service:
+        name: ntp
+        state: restarted
+
+- name: Deploy Docker container
+  hosts: srv1_ip, srv2_ip
+  become: true
+
+  tasks:
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Install Docker
+      apt:
+        name: python3-docker
+        state: present
+
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+
+    - name: Create directory
+      file:
+        path: /home/user/automation/ansible-website
+        state: directory
+
+    - name: Get docker file
+      copy:
+        src: /home/user/automation/ansible-website/Dockerfile
+        dest: /home/user/automation/ansible-website/Dockerfile
+
+    - name: Get html file
+      copy:
+        src: /home/user/automation/ansible-website/index.html
+        dest: /home/user/automation/ansible-website/index.html
+
+    - name: Build Docker image
+      docker_image:
+        path: /home/user/automation/ansible-website/
+        name: ansible-website
+          #tag: firstver
+        tag: latest
+        buildargs:
+          listen_port: 4444
+
+    - name: Start Docker container
+      docker_container:
+        name: ansible-website
+          #image: ansible-website:firstver
+        image: ansible-website
+        state: started
+        ports:
+          - "8080:80"
+
+
+- name: Deploy Docker container
+  hosts: srv3_ip
+  become: true
+
+  tasks:
+    - name: Create directory
+      file:
+        path: /home/user/automation/compose/
+        state: directory
+
+    - name: Get docker compose file
+      copy:
+        src: /home/user/automation/compose/docker-compose.yml
+        dest: /home/user/automation/compose/docker-compose.yml
+
+    - name: Install docker compose
+      apt:
+        name: docker-compose
+        state: present
+        
+
+    - name: Deploy docker compose
+      docker_compose:
+        project_src: /home/user/automation/compose
+        files:
+          - docker-compose.yml
